@@ -67,6 +67,7 @@ sealed class Route {
             page.videos
         }
     }
+    data object HistoryList : Route()
     class Player(val item: VideoItem) : Route()
 }
 
@@ -80,6 +81,7 @@ class MainViewModel : ViewModel() {
     fun openSearch() = push(Route.Search(viewModelScope))
     fun openChannel(url: String, name: String) = push(Route.Channel(url, name, viewModelScope))
     fun openVideo(v: VideoItem) = push(Route.Player(v))
+    fun openHistory() = push(Route.HistoryList)
     fun open(e: Entry) = when (e) {
         is Entry.Video -> openVideo(e.item)
         is Entry.Channel -> openChannel(e.item.url, e.item.name)

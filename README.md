@@ -75,7 +75,8 @@ All GitHub Actions are pinned to commit SHAs.
 * **Exported services**: `YtCarService` accepts only the genuine Android Auto host (package + signing-cert digest);
   `PlaybackService` accepts only Android Auto (same check), the platform, and this app. Caller-supplied URIs and
   metadata are discarded; only a YouTube video id is accepted, and media loading is HTTP(S)-only.
-* No login, cookies, accounts or local storage of user data.
+* No login, cookies or accounts. The only data kept is a local watch history and your chosen quality, in the app's
+  private storage on the phone (not backed up, never uploaded). History > Clear wipes it.
 
 ## Security design
 
@@ -101,7 +102,7 @@ is GPL-3.0, this app is distributed under GPL-3.0.
 ## Known limits
 
 YouTube changes often; if playback breaks, bump the NewPipeExtractor version. Phone and car share one
-player (the last screen to attach shows the picture). Max video height is 720p (`PlayerHub.MAX_HEIGHT`).
+player (the last screen to attach shows the picture). Video quality is selectable (360/480/720/1080p, default 720p); the best available stream at or below the choice is used.
 Car lists have no thumbnails and are capped by the host's row limit.
 
 ## Regenerating dependency checksums

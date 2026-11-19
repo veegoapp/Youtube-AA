@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import dev.ytcar.data.History
 import dev.ytcar.data.OkDownloader
 import dev.ytcar.net.Net
 import dev.ytcar.data.VideoItem
@@ -50,7 +51,13 @@ sealed interface Status {
  * (audio) and the Android Auto video screen.
  */
 object PlayerHub {
-    const val MAX_HEIGHT = 720
+    /** Selectable maximum video heights. The best available stream at or below the choice is used. */
+    val QUALITIES = listOf(360, 480, 720, 1080)
+
+    val maxHeight = MutableStateFlow(720)
+    /** Height of the stream actually playing (null for live/audio-only). */
+    val playingHeight = MutableStateFlow<Int?>(null)
+    private val settings by lazy { appCtx.getSharedPreferences("settings", Context.MODE_PRIVATE) }
 
     private lateinit var appCtx: Context
     lateinit var player: ExoPlayer
@@ -75,6 +82,8 @@ object PlayerHub {
     fun init(ctx: Context) {
         if (::player.isInitialized) return
         appCtx = ctx.applicationContext
+        History.init(appCtx)
+        maxHeight.value = settings.getInt("max_height", 720).takeIf { it in QUALITIES } ?: 720
         player = ExoPlayer.Builder(appCtx)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
@@ -106,19 +115,31 @@ object PlayerHub {
         ).buildAsync()
     }
 
-    fun play(item: VideoItem) {
-        if (current.value?.url == item.url && status.value !is Status.Error && player.playbackState != Player.STATE_IDLE) {
+    /** Change the quality cap (remembered) and, if something is playing, reload it at the same position. */
+    fun setQuality(height: Int) {
+        if (height !in QUALITIES || height == maxHeight.value) return
+        maxHeight.value = height
+        settings.edit().putInt("max_height", height).apply()
+        val cur = current.value ?: return
+        val pos = if (cur.live) 0L else player.currentPosition.coerceAtLeast(0L)
+        play(cur, startMs = pos, force = true)
+    }
+
+    fun play(item: VideoItem, startMs: Long = 0L, force: Boolean = false) {
+        if (!force && current.value?.url == item.url && status.value !is Status.Error && player.playbackState != Player.STATE_IDLE) {
             player.playWhenReady = true
             return
         }
         job?.cancel()
         current.value = item
         status.value = Status.Loading
+        if (!force) History.add(item)
         ensureSession()
         job = scope.launch {
             try {
                 val info = YtRepo.streamInfo(item.url)
-                player.setMediaSource(buildSource(info, item))
+                if (startMs > 0) player.setMediaSource(buildSource(info, item), startMs)
+                else player.setMediaSource(buildSource(info, item))
                 player.prepare()
                 player.playWhenReady = true
             } catch (e: CancellationException) {
@@ -158,7 +179,7 @@ object PlayerHub {
 
     private fun pickVideo(list: List<VideoStream>): VideoStream? {
         val ok = list.filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
-        val fit = ok.filter { it.height in 1..MAX_HEIGHT }.ifEmpty { ok.sortedBy { it.height }.take(1) }
+        val fit = ok.filter { it.height in 1..maxHeight.value }.ifEmpty { ok.sortedBy { it.height }.take(1) }
         val avc = fit.filter { it.itag in AVC_ITAGS }.ifEmpty { fit.filter { it.format == MediaFormat.MPEG_4 } }
         return (avc.ifEmpty { fit }).maxWithOrNull(compareBy({ it.height }, { it.bitrate }))
     }
@@ -166,15 +187,17 @@ object PlayerHub {
     private fun buildSource(info: StreamInfo, item: VideoItem): MediaSource {
         val live = info.streamType == StreamType.LIVE_STREAM || info.streamType == StreamType.AUDIO_LIVE_STREAM
         if (live && !info.hlsUrl.isNullOrEmpty()) {
+            playingHeight.value = null
             return HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem(info.hlsUrl, item))
         }
         val audio = pickAudio(info)
         val videoOnly = pickVideo(info.videoOnlyStreams)
         if (audio != null && videoOnly != null) {
+            playingHeight.value = videoOnly.height
             return MergingMediaSource(progressive(videoOnly.content, item), progressive(audio.content, item))
         }
-        pickVideo(info.videoStreams)?.let { return progressive(it.content, item) }
-        audio?.let { return progressive(it.content, item) }
+        pickVideo(info.videoStreams)?.let { playingHeight.value = it.height; return progressive(it.content, item) }
+        audio?.let { playingHeight.value = null; return progressive(it.content, item) }
         error("No playable stream found for this video")
     }
 

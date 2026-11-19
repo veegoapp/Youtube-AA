@@ -3,6 +3,8 @@ package dev.ytcar.ui
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -65,6 +69,7 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import dev.ytcar.data.ChannelItem
 import dev.ytcar.data.Entry
+import dev.ytcar.data.History
 import dev.ytcar.data.VideoItem
 import dev.ytcar.data.formatDuration
 import dev.ytcar.player.PlayerHub
@@ -84,6 +89,7 @@ fun AppRoot(vm: MainViewModel, setFullscreen: (Boolean) -> Unit) {
         Route.Home -> HomeScreen(vm)
         is Route.Search -> SearchScreen(vm, r)
         is Route.Channel -> ChannelScreen(vm, r)
+        Route.HistoryList -> HistoryScreen(vm)
         is Route.Player -> PlayerScreen(vm, r.item, setFullscreen)
     }
 }
@@ -185,9 +191,36 @@ fun HomeScreen(vm: MainViewModel) {
     LaunchedEffect(Unit) { vm.home.start() }
     Scaffold(topBar = {
         Bar("YouTube Car", null) {
+            TextButton(onClick = { vm.openHistory() }) { Text("History") }
             IconButton(onClick = { vm.openSearch() }) { Icon(Icons.Default.Search, contentDescription = "Search") }
         }
     }) { pad -> EntryList(vm.home, vm, pad) }
+}
+
+@Composable
+fun HistoryScreen(vm: MainViewModel) {
+    val list by History.items.collectAsState()
+    var confirm by remember { mutableStateOf(false) }
+    Scaffold(topBar = {
+        Bar("History", { vm.pop() }) {
+            if (list.isNotEmpty()) TextButton(onClick = { confirm = true }) { Text("Clear") }
+        }
+    }) { pad ->
+        if (list.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text("No history yet") }
+        } else {
+            LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(bottom = 24.dp)) {
+                items(list, key = { it.url }) { v -> VideoRow(v) { vm.openVideo(v) } }
+            }
+        }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("Clear history?") },
+        text = { Text("This deletes the watch history stored on this phone.") },
+        confirmButton = { TextButton(onClick = { History.clear(); confirm = false }) { Text("Clear") } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -234,6 +267,8 @@ fun ChannelScreen(vm: MainViewModel, route: Route.Channel) {
 fun PlayerScreen(vm: MainViewModel, item: VideoItem, setFullscreen: (Boolean) -> Unit) {
     LaunchedEffect(item.url) { PlayerHub.play(item) }
     val status by PlayerHub.status.collectAsState()
+    val maxH by PlayerHub.maxHeight.collectAsState()
+    val playingH by PlayerHub.playingHeight.collectAsState()
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var forced by remember { mutableStateOf(false) }
     val fullscreen = forced || landscape
@@ -271,6 +306,19 @@ fun PlayerScreen(vm: MainViewModel, item: VideoItem, setFullscreen: (Boolean) ->
                 (status as? Status.Error)?.let {
                     Text(it.message, color = MaterialTheme.colorScheme.error)
                     Button(onClick = { PlayerHub.current.value = null; PlayerHub.play(item) }) { Text("Retry") }
+                }
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Quality", style = MaterialTheme.typography.labelLarge)
+                    PlayerHub.QUALITIES.forEach { q ->
+                        FilterChip(selected = q == maxH, onClick = { PlayerHub.setQuality(q) }, label = { Text("${q}p") })
+                    }
+                }
+                playingH?.let {
+                    Text("Playing at ${it}p", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 item.channelUrl?.let { cu -> TextButton(onClick = { vm.openChannel(cu, item.channel) }) { Text("Open channel") } }
                 TextButton(onClick = { vm.pop() }) { Text("Back to browsing (audio keeps playing)") }
