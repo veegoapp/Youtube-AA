@@ -120,8 +120,21 @@ object YtRepo {
         )
     }
 
-    suspend fun streamInfo(url: String): StreamInfo =
-        withContext(Dispatchers.IO) { StreamInfo.getInfo(yt, url) }
+    private val VIDEO_URL = Regex("^https://(?:www\\.|m\\.)?youtube\\.com/watch\\?v=([A-Za-z0-9_-]{11})(?:&.*)?$")
+    private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{11}$")
+
+    /** Returns the canonical watch URL for a video id / watch URL, or null for anything else. */
+    fun canonicalVideoUrl(input: String): String? {
+        val id = VIDEO_URL.matchEntire(input)?.groupValues?.get(1)
+            ?: input.takeIf { VIDEO_ID.matches(it) }
+            ?: return null
+        return "https://www.youtube.com/watch?v=$id"
+    }
+
+    suspend fun streamInfo(url: String): StreamInfo {
+        val safe = canonicalVideoUrl(url) ?: throw IllegalArgumentException("Invalid video URL")
+        return withContext(Dispatchers.IO) { StreamInfo.getInfo(yt, safe) }
+    }
 }
 
 fun formatDuration(sec: Long): String {

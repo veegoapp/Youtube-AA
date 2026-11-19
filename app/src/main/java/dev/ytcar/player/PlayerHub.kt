@@ -9,8 +9,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -21,6 +21,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import dev.ytcar.data.OkDownloader
+import dev.ytcar.net.Net
 import dev.ytcar.data.VideoItem
 import dev.ytcar.data.YtRepo
 import kotlinx.coroutines.CancellationException
@@ -62,12 +63,14 @@ object PlayerHub {
     val current = MutableStateFlow<VideoItem?>(null)
     val status = MutableStateFlow<Status>(Status.Idle)
 
-    private val http by lazy {
-        DefaultHttpDataSource.Factory()
-            .setUserAgent(OkDownloader.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
+    /**
+     * HTTP(S)-only data source on the host-policy OkHttp client. Unlike DefaultDataSource it has no
+     * file://, content://, asset:// or rtmp:// support, so a media URI can never read local data,
+     * and every request/redirect is checked against [dev.ytcar.net.HostPolicy].
+     */
+    val dataSourceFactory: DataSource.Factory by lazy {
+        OkHttpDataSource.Factory(Net.client).setUserAgent(OkDownloader.USER_AGENT)
     }
-    private val dataSourceFactory by lazy { DefaultDataSource.Factory(appCtx, http) }
 
     fun init(ctx: Context) {
         if (::player.isInitialized) return
@@ -175,12 +178,23 @@ object PlayerHub {
         error("No playable stream found for this video")
     }
 
-    /** For the Android Auto media browser: resolve a browse item to a playable audio-only item. */
+    /**
+     * For the Android Auto media browser: resolve a browse item to a playable audio-only item.
+     * Only the media id is trusted and it must be a YouTube video id/URL. Any URI, metadata or
+     * artwork supplied by the caller is discarded and rebuilt from YouTube's own response.
+     */
     suspend fun resolveAudio(item: MediaItem): MediaItem {
-        if (item.localConfiguration != null) return item
-        val info = YtRepo.streamInfo(item.mediaId)
+        val url = YtRepo.canonicalVideoUrl(item.mediaId) ?: throw IllegalArgumentException("Invalid media id")
+        val info = YtRepo.streamInfo(url)
         val audio = pickAudio(info) ?: error("No audio stream")
         current.value = null
-        return item.buildUpon().setUri(audio.content).build()
+        val thumb = info.thumbnails.maxByOrNull { it.width }?.url
+        return MediaItem.Builder()
+            .setMediaId(url)
+            .setUri(audio.content)
+            .setMediaMetadata(
+                MediaMetadata.Builder().setTitle(info.name).setArtist(info.uploaderName)
+                    .setArtworkUri(thumb?.toUri()).setIsPlayable(true).setIsBrowsable(false).build()
+            ).build()
     }
 }

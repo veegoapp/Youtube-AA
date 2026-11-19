@@ -1,6 +1,5 @@
 package dev.ytcar.player
 
-import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.core.net.toUri
@@ -13,6 +12,12 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import dev.ytcar.data.Entry
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.session.DataSourceBitmapLoader
+import com.google.common.util.concurrent.MoreExecutors
+import dev.ytcar.net.Net
+import dev.ytcar.security.TrustedCallers
+import java.util.concurrent.Executors
 import dev.ytcar.data.VideoItem
 import dev.ytcar.data.YtRepo
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +37,15 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         PlayerHub.init(this)
-        session = MediaLibrarySession.Builder(this, PlayerHub.player, Callback()).build()
+        session = MediaLibrarySession.Builder(this, PlayerHub.player, Callback())
+            // Notification artwork must also go through the host-policy client.
+            .setBitmapLoader(
+                DataSourceBitmapLoader(
+                    MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
+                    OkHttpDataSource.Factory(Net.client),
+                )
+            )
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -75,6 +88,14 @@ class PlaybackService : MediaLibraryService() {
         filterIsInstance<Entry.Video>().map { video(it.item) }
 
     private inner class Callback : MediaLibrarySession.Callback {
+        /** Only Android Auto, the platform, and this app itself may connect. Everyone else is refused. */
+        override fun onConnect(
+            session: MediaSession, controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult =
+            if (TrustedCallers.isTrusted(this@PlaybackService, controller))
+                MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
+            else MediaSession.ConnectionResult.reject()
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: MediaLibraryService.LibraryParams?,
         ) = Futures.immediateFuture(LibraryResult.ofItem(folder(ROOT, "YouTube"), params))
@@ -100,7 +121,9 @@ class PlaybackService : MediaLibraryService() {
             session: MediaLibrarySession, browser: MediaSession.ControllerInfo, query: String,
             params: MediaLibraryService.LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> {
+            if (query.isBlank() || query.length > 200) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
             scope.launch {
+                if (searchCache.size > 20) searchCache.clear()
                 val r = try { YtRepo.search(query).items.asMedia() } catch (e: Exception) { emptyList() }
                 searchCache[query] = r
                 session.notifySearchResultChanged(browser, query, r.size, params)
@@ -113,6 +136,7 @@ class PlaybackService : MediaLibraryService() {
             page: Int, pageSize: Int, params: MediaLibraryService.LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             val all = searchCache[query].orEmpty()
+            if (pageSize <= 0 || page < 0) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
             return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params))

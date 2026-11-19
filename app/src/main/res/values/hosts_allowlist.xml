@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hosts allowed to drive the car screens: "<sha256 of signing cert>,<package>".
+         Source: androidx.car.app config.xml (hosts_allowlist_sample), release entry only. -->
+    <string-array name="hosts_allowlist" translatable="false">
+        <item>fdb00c43dbde8b51cb312aa81d3b5fa17713adb94b28f598d77f8eb89daceedf,
+            com.google.android.projection.gearhead</item>
+    </string-array>
+</resources>

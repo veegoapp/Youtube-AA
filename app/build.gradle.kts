@@ -16,21 +16,11 @@ android {
         versionName = "1.0.0"
     }
 
-    signingConfigs {
-        // Public, committed key: fine for personal sideloading, gives a stable signature so
-        // new builds update the old install. Replace with your own key for anything else.
-        create("sideload") {
-            storeFile = rootProject.file("keystore/sideload.keystore")
-            storePassword = "android"
-            keyAlias = "sideload"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("sideload")
+            // Not signed by Gradle on purpose: signing keys/passwords must never be visible to the build
+            // or its plugins. The APK is signed afterwards with apksigner (see README / CI workflow).
         }
     }
 
@@ -58,6 +48,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-session:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+    implementation("androidx.media3:media3-datasource-okhttp:$media3")
 
     // Android Auto
     implementation("androidx.car.app:app:1.4.0")

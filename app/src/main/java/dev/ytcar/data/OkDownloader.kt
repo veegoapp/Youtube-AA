@@ -1,23 +1,19 @@
 package dev.ytcar.data
 
-import okhttp3.OkHttpClient
+import dev.ytcar.net.Net
 import okhttp3.Request.Builder
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
-import java.util.concurrent.TimeUnit
 
 /** Minimal OkHttp-backed Downloader for NewPipeExtractor. No cookies, no identifiers stored. */
 object OkDownloader : Downloader() {
     const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0"
 
-    private val client = OkHttpClient.Builder()
-        .readTimeout(30, TimeUnit.SECONDS)
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val client get() = Net.client
 
     override fun execute(request: Request): Response {
         val body = request.dataToSend()?.toRequestBody()
