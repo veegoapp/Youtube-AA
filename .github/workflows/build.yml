@@ -33,6 +33,14 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
       - name: Build (no secrets available to Gradle)
         run: ./gradlew --no-daemon assembleRelease
+      - name: Manifest report (permissions and components of the built APK)
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          echo "== permissions"; "$BT/aapt2" dump permissions "$APK"
+          echo "== components"; "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" \
+            | grep -E 'E: (activity|service|receiver|provider|queries|package)|android:(name|exported|permission|networkSecurityConfig|usesCleartextTraffic|debuggable|allowBackup)\(' 
+          echo "== native libs"; unzip -l "$APK" | grep -E '\.so$' || true
       - name: Sign with apksigner (only if signing secrets exist)
         id: sign
         env:
