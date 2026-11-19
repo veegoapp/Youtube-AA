@@ -69,7 +69,7 @@ object YtRepo {
         val np = page.nextPage
         val more: (suspend () -> PageResult)? =
             if (next != null && page.hasNextPage() && Page.isValid(np)) {
-                { pageOf(next(np), fallbackChannel, next) }
+                { pageOf(next(np!!), fallbackChannel, next) }
             } else null
         return PageResult(items, more)
     }
