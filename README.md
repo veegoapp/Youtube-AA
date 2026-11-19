@@ -103,3 +103,9 @@ is GPL-3.0, this app is distributed under GPL-3.0.
 YouTube changes often; if playback breaks, bump the NewPipeExtractor version. Phone and car share one
 player (the last screen to attach shows the picture). Max video height is 720p (`PlayerHub.MAX_HEIGHT`).
 Car lists have no thumbnails and are capped by the host's row limit.
+
+## Regenerating dependency checksums
+
+After changing a dependency version: `./gradlew --write-verification-metadata sha256 assembleRelease`,
+then review the diff of `gradle/verification-metadata.xml` before committing. (Checksums are
+trust-on-first-use; compare unfamiliar entries with the artifact's official release.)
