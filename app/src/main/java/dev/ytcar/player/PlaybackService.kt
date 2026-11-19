@@ -13,7 +13,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import dev.ytcar.data.Entry
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.session.DataSourceBitmapLoader
+import androidx.media3.datasource.DataSourceBitmapLoader
 import com.google.common.util.concurrent.MoreExecutors
 import dev.ytcar.net.Net
 import dev.ytcar.security.TrustedCallers
