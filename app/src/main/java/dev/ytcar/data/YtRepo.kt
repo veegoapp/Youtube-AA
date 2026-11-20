@@ -69,7 +69,7 @@ object YtRepo {
         val np = page.nextPage
         val more: (suspend () -> PageResult)? =
             if (next != null && page.hasNextPage() && Page.isValid(np)) {
-                { pageOf(next(np!!), fallbackChannel, next) }
+                { withContext(Dispatchers.IO) { pageOf(next(np!!), fallbackChannel, next) } }
             } else null
         return PageResult(items, more)
     }
@@ -95,7 +95,7 @@ object YtRepo {
     /** Drops live streams from a page (the default kiosk is mostly live streams now); keeps paging. */
     private fun withoutLive(p: PageResult): PageResult = PageResult(
         p.items.filterNot { it is Entry.Video && it.item.live },
-        p.loadMore?.let { more -> { withoutLive(more()) } },
+        p.loadMore?.let { more -> { withContext(Dispatchers.IO) { withoutLive(more()) } } },
     )
 
     suspend fun search(query: String): PageResult = withContext(Dispatchers.IO) { searchBlocking(query) }
