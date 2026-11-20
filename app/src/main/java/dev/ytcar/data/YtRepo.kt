@@ -84,12 +84,19 @@ object YtRepo {
                 e.fetchPage()
                 e.initialPage
             }
-            if (p.items.isEmpty()) throw IllegalStateException("empty kiosk")
-            p
+            val f = withoutLive(p)
+            if (f.items.isEmpty()) throw IllegalStateException("empty kiosk")
+            f
         } catch (e: Exception) {
-            searchBlocking("popular videos")
+            withoutLive(searchBlocking("popular videos"))
         }
     }
+
+    /** Drops live streams from a page (the default kiosk is mostly live streams now); keeps paging. */
+    private fun withoutLive(p: PageResult): PageResult = PageResult(
+        p.items.filterNot { it is Entry.Video && it.item.live },
+        p.loadMore?.let { more -> { withoutLive(more()) } },
+    )
 
     suspend fun search(query: String): PageResult = withContext(Dispatchers.IO) { searchBlocking(query) }
 
