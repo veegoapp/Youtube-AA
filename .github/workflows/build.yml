@@ -52,16 +52,19 @@ jobs:
           set -euo pipefail
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
           test -f "$UNSIGNED"
-          if [ -z "${KS_B64:-}" ]; then
-            cp "$UNSIGNED" YouTubeCar-UNSIGNED.apk
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No signing secrets configured: produced an UNSIGNED apk that cannot be installed. See README."
-            exit 0
-          fi
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           KS="$RUNNER_TEMP/release.jks"
           trap 'rm -f "$KS"' EXIT
-          echo "$KS_B64" | base64 -d > "$KS"
+          if [ -z "${KS_B64:-}" ]; then
+            # No signing secrets: sign with a throwaway key so the apk is installable for personal use.
+            # (A new key each run: Android won't update over an apk signed with a different key - uninstall first.)
+            echo "::warning::No signing secrets: signed with a throwaway key (personal install only)."
+            KS_PASS=throwaway-pass; KEY_ALIAS=throwaway; KEY_PASS=throwaway-pass
+            keytool -genkeypair -keystore "$KS" -storepass "$KS_PASS" -keypass "$KEY_PASS" -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=YouTubeCar personal build"
+          else
+            echo "$KS_B64" | base64 -d > "$KS"
+          fi
           "$BT/apksigner" sign --ks "$KS" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" \
             --key-pass env:KEY_PASS --out YouTubeCar.apk "$UNSIGNED"
           "$BT/apksigner" verify --print-certs YouTubeCar.apk
