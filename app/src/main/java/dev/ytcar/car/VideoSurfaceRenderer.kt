@@ -20,11 +20,16 @@ class VideoSurfaceRenderer(private val ctx: CarContext) : SurfaceCallback {
     private var presentation: Presentation? = null
     private var view: PlayerView? = null
 
-    /** Whether video may currently be shown (parked). When false the player is detached. */
-    var videoAllowed = false
-        set(value) { field = value; apply() }
+    /** Video playback is allowed continuously so the picture stays visible while moving. */
+    var videoAllowed = true
+        set(value) {
+            field = true
+            apply()
+        }
 
-    private fun apply() { view?.player = if (videoAllowed) PlayerHub.player else null }
+    private fun apply() {
+        view?.player = if (videoAllowed) PlayerHub.player else null
+    }
 
     override fun onSurfaceAvailable(surfaceContainer: SurfaceContainer) {
         release()
